@@ -1,77 +1,95 @@
 ---
 name: secagent-sandbox
-description: 安全执行协议。加载后 Agent 在执行任何操作前先评估授权、检查风险、记录审计。
+description: Secure execution protocol. Pre-execution risk assessment, authorization check, execution audit logging.
 tools: exec_shell, write_file, read_file, fetch_url
 ---
 
 # SecAgent Sandbox
 
-加载此 SKILL 后，执行任何操作前过这道检查。
+Loading this SKILL enforces a security protocol before any tool execution.
 
-## 授权检查 (第一步，不可跳过)
-
-```
-1. 目标域名是否有 *.ctfhub.com, *.hackthebox.com, *.tryhackme.com?
-   → YES: CTF 豁免，直接放行
-
-2. 目标是否 localhost/127.0.0.1?
-   → YES: 放行
-
-3. 检查 ~/.secagent/authorization.toml:
-   - CIDR 匹配? → 放行
-   - 域名匹配? → 放行
-   - 文件不存在? → 创建默认文件后按第1步判定
-
-4. 以上都不是?
-   → REJECT. 输出: "Target {target} not authorized."
-```
-
-## 操作风险评估
+## Authorization Check (First step — mandatory)
 
 ```
-操作类型:
-  读文件 (cat, head, read)  → LOW (自动放行)
-  curl GET (读网络)          → LOW (自动放行，仅授权目标)
-  写文件 (write, edit)       → MEDIUM (workspace 内自动放行)
-  nmap (网络扫描)            → MEDIUM (检查授权目标后放行)
-  执行 PoC (exploit)         → HIGH (放行但记录审计)
-  执行危险命令               → CRITICAL (检查危险模式后拒绝或报告)
+1. Does the target match *.ctfhub.com, *.hackthebox.com, *.tryhackme.com?
+   → YES: CTF-exempt. Proceed.
 
-危险模式 (直接拒绝):
-  bash -c "..." (内联命令执行)
+2. Is the target localhost/127.0.0.1?
+   → YES: Proceed.
+
+3. Check ~/.secagent/authorization.toml:
+   - CIDR match? → Proceed.
+   - Domain wildcard match? → Proceed.
+   - File doesn't exist? → Create it, then re-evaluate per step 1.
+
+4. None of the above?
+   → REJECT. Output: "Target {target} not authorized."
+```
+
+## authorization.toml Bootstrap
+
+```
+If ~/.secagent/authorization.toml doesn't exist:
+
+mkdir -p ~/.secagent
+touch ~/.secagent/authorization.toml
+
+Default content:
+# SecAgent Authorization
+# Add authorized targets below.
+# CIDR example: 192.168.0.0/16
+# Domain example: *.example.com
+# CTF platforms (*.ctfhub.com, *.hackthebox.com, *.tryhackme.com) are auto-authorized.
+
+Default behavior: empty file → allow only localhost + CTF platforms.
+```
+
+## Operation Risk Levels
+
+```
+Read file (cat, head, read)      → LOW (auto-approved)
+curl GET (read network)          → LOW (auto-approved, authorized targets only)
+Write file (write, edit)         → MEDIUM (auto-approved inside workspace)
+nmap (network scan)              → MEDIUM (authorized targets only)
+Execute PoC (exploit)            → HIGH (allowed, logged)
+Dangerous command                → CRITICAL (rejected or reported)
+
+Dangerous patterns (immediate rejection):
+  bash -c "..." (inline command execution)
   curl ... | bash (pipe to shell)
-  $(...) 或 `` (命令替换)
-  /dev/tcp (反向 shell)
-  nc -e / ncat -e (netcat 反向 shell)
-  >/dev/null 2>&1 配合危险命令 (输出抑制)
+  $(...) or `` (command substitution)
+  /dev/tcp (reverse shell)
+  nc -e / ncat -e (netcat reverse shell)
+  >/dev/null 2>&1 with dangerous commands (output suppression)
 ```
 
-## 审计日志
+## Audit Log
 
 ```
-每次操作后记录一行:
-[EXEC] {time} | {tool} | exit={code} | {duration}ms | {risk}
+Log one line per operation:
 
-time:   2026-05-25T10:30:00Z (UTC ISO8601)
-code:   实际退出码 (0-255), BLOCKED, TIMEOUT
-risk:   LOW / MEDIUM / HIGH / CRITICAL
+[EXEC] {ISO8601_UTC} | {tool} | exit={code} | {duration_ms}ms | {risk}
 
-示例:
-[EXEC] 10:30:01Z | curl | exit=0 | 230ms | LOW
-[EXEC] 10:31:00Z | nmap | exit=0 | 12300ms | MEDIUM
-[EXEC] 10:32:00Z | curl | exit=BLOCKED | 5ms | HIGH  ← 目标未授权
+  ISO8601_UTC: 2026-05-25T10:30:00Z format, always UTC
+  exit_code: 0-255, or BLOCKED, or TIMEOUT
+  duration_ms: total time from assessment to completion; assessment time if blocked
+  risk: LOW / MEDIUM / HIGH / CRITICAL
+
+Examples:
+[EXEC] 2026-05-25T10:30:01Z | curl | exit=0 | 230ms | LOW
+[EXEC] 2026-05-25T10:31:00Z | curl | exit=BLOCKED | 5ms | HIGH
 ```
 
-## CTF 特殊规则
+## CTF-Specific Rules
 
 ```
-CTF 平台 URL (*.ctfhub.com 等):
-  - 所有读操作: 自动放行 (CTF 豁免)
-  - PoC 执行: 放行 (CTF 题目设计为可攻击)
-  - 写操作: 正常评估 (不豁免)
+CTF platform targets (*.ctfhub.com, etc.):
+  - All read operations: auto-approved (CTF exemption)
+  - PoC execution: allowed (target is designed to be attacked)
+  - Write operations: normal assessment (no exemption)
 
-CTF 环境不需要:
-  - 沙箱隔离 (题目本身在沙箱中)
-  - 防御绕过 (题目要求攻击)
-  - 用户审批 (CTF 是自主解题)
+CTF environments don't need:
+  - Sandbox isolation (target already sandboxed)
+  - Defense bypass (target expects attacks)
+  - User approval (CTF is self-paced)
 ```
