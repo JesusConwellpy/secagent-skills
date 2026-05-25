@@ -84,9 +84,10 @@ tools: exec_shell, write_file, read_file
 ## authorization.toml 自举
 
 ```
-如果 authorization.toml 不存在，在 workspace 根目录创建默认文件:
+如果 ~/.secagent/authorization.toml 不存在，创建它:
 
-touch {workspace}/authorization.toml
+mkdir -p ~/.secagent
+touch ~/.secagent/authorization.toml
 
 写入默认内容:
 # SecAgent Authorization

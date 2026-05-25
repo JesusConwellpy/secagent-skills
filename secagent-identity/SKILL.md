@@ -22,8 +22,9 @@ Security 模式:
   触发: 具体目标（IP/域名/URL/文件/二进制） + 安全任务动词（渗透/扫描/漏洞/CTF/审计/exploit/分析安全）
   示例: "scan 10.0.0.1" "审计这个代码" "分析这个二进制的漏洞" "用这个 PoC 打目标"
   行为: 全工具可用。Agent 编排。走方法论。
-  前置: 确认目标在 authorization.toml 白名单内或属于 CTF 豁免平台
-        不在白名单 → 拒绝: "目标未授权。请添加到 authorization.toml。"
+  前置: 确认目标在 ~/.secagent/authorization.toml 白名单内或属于 CTF 豁免平台
+        CTF 豁免: *.ctfhub.com, *.hackthebox.com, *.tryhackme.com
+        不在白名单 → 拒绝: "目标未授权。请添加到 ~/.secagent/authorization.toml。"
 ```
 
 ## 推理链（Security 模式强制执行）
