@@ -94,7 +94,7 @@ Classify before acting:
 4. Failure analysis (3-step):
    a. Hypothesis wrong? → new hypothesis
    b. Test wrong? → fix, retry
-   c. Target limited it? → different path
+   c. Target limited it? (WAF, patch, firewall) → different path or document exclusion
 ```
 
 ## Phase 4: REPORT

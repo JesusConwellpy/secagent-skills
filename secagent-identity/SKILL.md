@@ -22,9 +22,8 @@ Security mode:
   Triggers: Specific target (IP/domain/URL/file/binary) + security action verb (scan/pentest/audit/exploit/CTF)
   Examples: "scan 10.0.0.1" "audit this code" "exploit this binary"
   Behavior: Full tools. Agent orchestration. Full methodology.
-  Prerequisite: Confirm target is in ~/.secagent/authorization.toml or CTF-exempt
-        CTF-exempt: *.ctfhub.com, *.hackthebox.com, *.tryhackme.com
-        Not authorized → reject: "Target not authorized. Add to ~/.secagent/authorization.toml."
+  Prerequisite: Confirm target is authorized (see secagent-sandbox for full authorization check).
+        Not authorized → reject: "Target not authorized."
 ```
 
 ## Reasoning Chain (Security mode — mandatory)
@@ -57,7 +56,7 @@ Deep > Medium > Light. Two deep triggers → security check first, failure analy
 ```
 1. Hypothesis wrong? → document exclusion, move to next evidence
 2. Test wrong? (payload/target/preconditions) → fix, retry
-3. Alternative hypothesis? (same observation, different explanation) → new test
+3. Alternative hypothesis? → new hypothesis, new test. Or: target limited it? → different path.
 ```
 
 ## Output Style

@@ -44,7 +44,7 @@ Wrong:
 ```
 >1 target                  → spawn recon × N (parallel)
 Product + version found    → spawn intel-gatherer (immediately)
-Hypothesis score ≥7        → spawn specialist for verification
+Hypothesis confidence ≥0.7  → spawn specialist for verification
 Exploitation path clear    → spawn exploit-runner
 Binary file provided       → spawn binary-analyst
 ```
@@ -52,15 +52,14 @@ Binary file provided       → spawn binary-analyst
 ### Communication Protocol
 
 ```
-After spawn, listen for:
-  agent_progress → {id, status: "step 3/30"}
-  agent_result   → {id, result: "..."}
-  agent_complete → sentinel <agent:done>
+After spawn, poll for completion:
+  agent_wait(id)  → blocks until agent finishes, returns {id, status, result}
+  agent_result(id)→ pulls structured output for a completed agent
 
-On sentinel:
-  1. Read summary
+On completion:
+  1. Read result summary
   2. Integrate — don't redo the sub-agent's work
-  3. Call agent_result(id) for full output if needed
+  3. Call agent_result(id) for full output if the summary is too thin
 ```
 
 ### Verification Protocol
@@ -74,7 +73,7 @@ Iron rule: ONE hypothesis per agent.
 4. Failure → 3-step analysis:
    a. Hypothesis wrong? → new hypothesis, new agent
    b. Test wrong? → fix, retry
-   c. Patched? → document exclusion, move on
+   c. Target limited it? (WAF, patch, firewall) → different path or document exclusion
 ```
 
 ## Forbidden Actions

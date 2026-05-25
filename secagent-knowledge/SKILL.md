@@ -33,7 +33,7 @@ Loading this SKILL gives you a complete local knowledge management system. This 
 ```
 Trigger → Action:
   IP + port + service found           → write entities/ips/{ip}.md
-  Product + version identified        → write entities/cves/{cve-id}.md
+  Product + version identified        → search CVEs first, then write entities/cves/{cve-id}.md
   CVE matched                         → write entities/cves/{cve-id}.md
   Vulnerability confirmed             → write discoveries/vuln-findings/F{###}.md
   PoC successful                      → write discoveries/pocs/{finding-id}-poc.md

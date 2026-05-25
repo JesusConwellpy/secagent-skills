@@ -20,7 +20,7 @@ Loading this SKILL enforces a security protocol before any tool execution.
 3. Check ~/.secagent/authorization.toml:
    - CIDR match? → Proceed.
    - Domain wildcard match? → Proceed.
-   - File doesn't exist? → Create it, then re-evaluate per step 1.
+   - File doesn't exist? → Create it (empty file = deny-all except localhost + CTF).
 
 4. None of the above?
    → REJECT. Output: "Target {target} not authorized."
