@@ -1,251 +1,260 @@
 ---
 name: secagent-knowledge
-description: 安全知识管理系统 — LLM Wiki (entities/concepts/discoveries/synthesis)、FTS5 全文搜索、跨会话记忆、自动知识策展、Agent 间知识共享
-version: "1.0"
-source: JesusConwellpy/SecAgent-TUI (crates/tui/src/llmwiki_server.rs, crates/tui/src/memory/, wiki/)
-tools: read_wiki_page, write_wiki_page, search_wiki, list_wiki, read_wiki_log, note
+description: 本地 LLM-Wiki 知识系统。加载后 Agent 在本地创建结构化 Wiki、FTS 搜索、跨 Agent 共享、跨会话继承。核心：知识生产→消化→检索→复用的完整闭环。
+tools: read_file, write_file, list_dir, grep_files
 ---
 
-# SecAgent Knowledge — 知识管理与 Wiki 系统
+# SecAgent Knowledge — 本地 LLM-Wiki 知识系统
 
-## 能力概述
+加载此 SKILL 后，你获得完整的本地知识管理能力。这不是"读文档"——你实际创建和维护一个结构化的本地 Wiki。
 
-为 AI Agent 提供持久化、可搜索、跨会话的安全知识管理。结构化 Wiki 目录 (entities/concepts/discoveries/synthesis)、FTS5 全文搜索引擎、定时知识策展、Agent 间实时知识共享。
-
-## 调用链 (完整端到端)
+## 自举：首次加载时立即执行
 
 ```
-安全发现 (工具输出、Agent 报告、漏洞确认)
-  │
-  ├─→ 知识采集
-  │   │
-  │   ├─ 实体提取: IP, 域名, CVE, 端口, 服务版本, 利用技术
-  │   ├─ ATT&CK 分类: 战术 (Recon/Execution/Persistence/...) → 技术 (TXXXX)
-  │   ├─ CWE 分类: 弱点类型 (CWE-89/SQLi, CWE-79/XSS, CWE-120/BoF)
-  │   └─ 严重性评估: CVSS 3.1 计算 (AV/AC/PR/UI/S/C/I/A)
-  │
-  ├─→ Wiki 写入 (write_wiki_page)
-  │   │
-  │   ├─ wiki/entities/ips/192.168.1.1.md
-  │   │   └─ 关联端口、服务、漏洞
-  │   │
-  │   ├─ wiki/entities/cves/CVE-2024-XXXX.md
-  │   │   └─ 产品、版本、CVSS、PoC、修复版本
-  │   │
-  │   ├─ wiki/concepts/attack-methods/sql-injection.md
-  │   │   └─ 技术描述、常见 payload、绕过方法
-  │   │
-  │   ├─ wiki/discoveries/vuln-findings/F001-sqli-products-php.md
-  │   │   └─ 目标、证据、复现步骤
-  │   │
-  │   └─ wiki/synthesis/reports/engagement-2026-05-25.md
-  │       └─ 综合报告、严重性分布、修复建议
-  │
-  ├─→ FTS5 全文索引 (自动)
-  │   SQLite FTS5: 每个 Wiki 文件自动分词索引
-  │   支持: 精确匹配、前缀搜索、短语搜索、布尔查询
-  │
-  ├─→ 跨 Agent 知识共享
-  │   Agent A (recon)     → write_wiki_page("entities/ips/192.0.2.5.md")
-  │   Agent B (intel)     → search_wiki("MySQL 5.7.38") → 命中
-  │   Agent C (exploit)   → read_wiki_page("entities/cves/CVE-2021-XXXX.md")
-  │                         → 获取 PoC → 执行验证
-  │
-  └─→ 跨会话复用
-      记忆系统加载最近条目 → 新会话注入 <user_memory> block
-      → 知识策展: cron 定时清理低价值条目
+1. 确定 Wiki 根目录:
+   WIKI_ROOT = {workspace}/wiki
+
+2. 创建目录骨架:
+   mkdir -p {WIKI_ROOT}/entities/ips
+   mkdir -p {WIKI_ROOT}/entities/domains
+   mkdir -p {WIKI_ROOT}/entities/cves
+   mkdir -p {WIKI_ROOT}/entities/tools
+   mkdir -p {WIKI_ROOT}/concepts/attack-methods
+   mkdir -p {WIKI_ROOT}/concepts/defense-tech
+   mkdir -p {WIKI_ROOT}/concepts/design-patterns
+   mkdir -p {WIKI_ROOT}/discoveries/scan-results
+   mkdir -p {WIKI_ROOT}/discoveries/vuln-findings
+   mkdir -p {WIKI_ROOT}/discoveries/pocs
+   mkdir -p {WIKI_ROOT}/synthesis/reports
+   mkdir -p {WIKI_ROOT}/synthesis/analysis
+   mkdir -p {WIKI_ROOT}/synthesis/summaries
+
+3. 创建索引文件:
+   写入 {WIKI_ROOT}/INDEX.md，内容:
+   "# Wiki Index\n\nLast updated: {timestamp}\n\n## Entities\n\n## Discoveries\n\n## Synthesis\n"
+
+4. 确认: "Wiki ready at {WIKI_ROOT}。现在开始生产知识。"
 ```
 
-## Wiki 操作 API
+## 知识生产→消化→检索→复用 闭环
 
-```rust
-// 5 种核心操作
-read_wiki_page(path: &str) -> String
-    // 读取: wiki/entities/cves/CVE-2024-1234.md
-    // 返回: 完整 Markdown 内容
+### 环节 1: 生产 (每当有安全发现时)
 
-write_wiki_page(path: &str, content: &str)
-    // 写入: 创建或更新条目
-    // 自动创建父目录
-    // 自动触发 FTS5 索引更新
-
-search_wiki(query: &str) -> Vec<SearchResult>
-    // FTS5 全文搜索
-    // 支持: "SQL injection UNION" / "CVE-2024" / "Apache 2.4"
-    // 返回: [{path, title, snippet, score}]
-
-list_wiki(dir: &str) -> Vec<DirEntry>
-    // 列出目录: wiki/discoveries/vuln-findings/
-    // 返回: [{name, kind(file/dir), size, modified}]
-
-read_wiki_log() -> Vec<LogEntry>
-    // 最近变更: 最后 N 次 write/update
-    // 返回: [{path, action(create/update), timestamp}]
-```
-
-### FTS5 搜索语法
+你做任何操作后，**立即**将发现写入 Wiki。不要等、不要攒。
 
 ```
-精确匹配:   "CVE-2024-1234"           → 精确 CVE 编号
-前缀搜索:   "CVE-2024-*"              → 2024 年所有 CVE
-短语搜索:   "SQL injection bypass"    → 含全部词的条目
-布尔查询:   "Apache AND CVE NOT 2.2"  → 组合条件
-字段搜索:   "type:SQLi severity:High" → (未来扩展)
+触发条件 → 动作
+─────────────────────────────────────────────
+扫描发现 IP+端口+服务      → 写 entities/ips/{ip}.md
+识别到产品+版本            → 写 entities/cves/{cve-id}.md (或创建占位)
+CVE 匹配成功               → 写 entities/cves/{cve-id}.md
+漏洞验证确认               → 写 discoveries/vuln-findings/F{###}.md
+PoC 执行成功               → 写 discoveries/pocs/{finding-id}-poc.md
+子代理返回结果             → 提取关键发现 → 写入对应目录
+攻击方法/模式归纳          → 写 concepts/attack-methods/{technique}.md
+防御绕过成功               → 写 concepts/defense-tech/{bypass}.md
 ```
 
-## Wiki 目录结构与模板
+写入规则:
+- 文件名 = 实体标识符 (IP、CVE 编号、Finding ID)
+- 内容使用下面的精确模板
+- 写完后追加一行到 INDEX.md 对应节
 
-```
-wiki/
-├── entities/           ← 实体: 具体可寻址的对象
-│   ├── ips/            ← IP 地址及其关联信息
-│   ├── domains/        ← 域名及子域名
-│   ├── cves/           ← CVE 条目
-│   └── tools/          ← 工具及使用记录
-│
-├── concepts/           ← 概念: 抽象知识
-│   ├── attack-methods/ ← 攻击方法 (SQLi, XSS, BoF, ...)
-│   ├── defense-tech/   ← 防御技术 (WAF, ASLR, NX, ...)
-│   └── design-patterns/← 设计模式 (Fan-out, Mailbox, ...)
-│
-├── discoveries/        ← 发现: 实例化的观察
-│   ├── scan-results/   ← 扫描结果 (nmap, gobuster, ...)
-│   ├── vuln-findings/  ← 漏洞发现 (F001, F002, ...)
-│   └── pocs/           ← PoC 代码和验证结果
-│
-└── synthesis/          ← 合成: 高级分析
-    ├── reports/        ← 综合报告
-    ├── analysis/       ← 分析文档
-    └── summaries/      ← 摘要和结论
-```
+### 环节 2: 消化 (结构化写入)
 
-### CVE 条目模板
+**每个条目使用精确模板**。不要自由发挥——结构一致才能被搜索命中。
+
+#### IP 条目模板
+
+写入 `wiki/entities/ips/{ip}.md`:
 
 ```markdown
-# CVE-2024-1234
-- **Product**: Apache HTTP Server 2.4.51
-- **Type**: Remote Code Execution
-- **CWE**: CWE-119 (Improper Restriction of Operations within the Bounds of a Memory Buffer)
-- **CVSS**: 9.8 (CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H)
-- **Exploit**: Available at exploit-db.com/exploits/XXXXX
-- **PoC**: (attached or linked)
-- **Fixed in**: Apache 2.4.52
-- **Discovered**: 2024-01-15
-- **Last verified**: 2026-05-25 against target [REDACTED]
+# {ip}
+
+- **First seen**: {timestamp}
+- **Last seen**: {timestamp}
+- **Hostname**: {hostname or "unknown"}
+- **OS**: {os guess or "unknown"}
+
+## Open Ports
+| Port | Service | Version | CVE |
+|------|---------|---------|-----|
+| {port} | {service} | {version} | {cve or "—"} |
+
+## Findings
+- [{finding-id}](../discoveries/vuln-findings/{finding-id}.md): {one-line summary}
 ```
 
-### 漏洞发现条目模板
+#### CVE 条目模板
+
+写入 `wiki/entities/cves/{cve-id}.md`:
 
 ```markdown
-# F001: SQL Injection in /products.php
+# {cve-id}
+
+- **Product**: {product} {version}
+- **Type**: {sqli/xss/rce/bof/lfi/ssrf/...}
+- **CVSS**: {score}
+- **CWE**: {cwe-id}
+- **Exploit**: {link or "no public exploit"}
+- **PoC**: [poc](../discoveries/pocs/{finding-id}-poc.md)
+- **Fixed in**: {version or "unknown"}
+- **Verified**: {yes/no/untested}
+- **Verified against**: {target or "—"}
+```
+
+#### 漏洞发现条目模板
+
+写入 `wiki/discoveries/vuln-findings/F{###}.md`:
+
+```markdown
+# F{###}: {title}
 
 - **Target**: [REDACTED]
-- **Endpoint**: https://target.example.com/products.php?id=
-- **Type**: SQL Injection (Union-based)
-- **Severity**: High
-- **CVSS**: 7.5
-- **Status**: Confirmed
+- **Endpoint**: {url or path}
+- **Type**: {vuln type}
+- **Severity**: Critical / High / Medium / Low
+- **Status**: Confirmed / Pending / False Positive
+- **CVSS**: {score or "—"}
 
 ## Evidence
-- Payload: `?id=1' UNION SELECT 1,2,3,4,5--`
-- Database: MySQL 5.7.38
-- Extracted: 5 columns, database 'shop_db'
+{tool output, screenshots, payloads}
 
 ## Impact
-Attacker can extract all user data, including password hashes.
+{concrete impact — data exposed, access gained, system compromised}
 
 ## Reproduction
-1. Navigate to /products.php?id=1
-2. Append `' UNION SELECT 1,2,3,4,5--`
-3. Observe column reflection at positions 2 and 3
+1. {step 1}
+2. {step 2}
+3. {expected result}
 
 ## Remediation
-Use parameterized queries (PDO prepared statements).
+{specific fix — not "patch it", but exactly what to change}
 ```
 
-## 记忆系统
+#### 报告模板
 
-```rust
-// crates/tui/src/memory/
-pub struct MemorySystem {
-    db: SqliteConnection,          // SQLite FTS5 数据库
-    memory_path: PathBuf,          // ~/.deepseek/memory/
-    cron_interval: Duration,       // 策展间隔 (默认 24h)
-    max_entries: usize,            // 最大条目数 (默认 10000)
-}
+写入 `wiki/synthesis/reports/{date}-{engagement}.md`:
 
-impl MemorySystem {
-    // 全文搜索
-    pub fn search(&self, query: &str) -> Vec<MemoryEntry>
+```markdown
+# {engagement name} — Security Assessment Report
 
-    // 写入记忆
-    pub fn remember(&mut self, entry: MemoryEntry)
+**Date**: {date}
+**Scope**: {targets}
+**Findings**: {count}
 
-    // 定时策展: 清理过期/低价值条目
-    pub fn curate(&mut self) -> usize  // 返回清理数量
+## Severity Breakdown
+- Critical: {n}
+- High: {n}
+- Medium: {n}
+- Low: {n}
 
-    // 加载最近记忆 (用于新会话注入)
-    pub fn load_recent(&self, limit: usize) -> Vec<MemoryEntry>
-}
+## Findings
+{list of F### links with one-line summaries}
+
+## Timeline
+{chronological log of key actions and discoveries}
+
+## Recommendations
+{prioritized list of remediation steps}
 ```
 
-### 记忆策展规则
+### 环节 3: 检索 (开始新工作前必做)
+
+开始任何安全任务前，**先搜 Wiki**。这是铁律。
 
 ```
-1. 超过 90 天未访问 → 标记为 stale
-2. 确认度 = LOW + 超过 30 天 → 清理
-3. 重复条目 (同实体 + 同发现) → 合并
-4. 纯工具输出 (raw nmap scan) > 10MB → 截断到摘要
-5. 关联的 case 目录已被删除 → 清理孤儿条目
+搜索步骤:
+1. grep_files("wiki/", "{keyword}")           — 文件名搜索
+2. read_file("wiki/INDEX.md")                  — 查看索引
+3. grep_files("wiki/", "{product} {version}")  — 精确产品搜索
+4. grep_files("wiki/", "{cve-id}")             — CVE 搜索
+5. read_file("wiki/entities/ips/{target}.md")  — 目标已有信息
+
+搜索优先级:
+1. 先搜 IP/域名 → entities/ips/ 或 entities/domains/
+2. 再搜 CVE → entities/cves/
+3. 再搜漏洞类型 → discoveries/vuln-findings/
+4. 再搜攻击方法 → concepts/attack-methods/
+5. 最后搜报告 → synthesis/
 ```
 
-## Agent 间知识共享示例
+### 环节 4: 复用 (跨 Agent / 跨会话)
 
 ```
-Timeline: 一次渗透测试中的 Agent 协作
+同会话内共享:
+  Agent A 写入 → Agent B 立刻可读 (同文件系统)
+  协议: Agent A write → Agent A 报告文件路径 → Agent B read
 
-T+0s:  Agent A (recon) 扫描 192.0.2.5
-       → 发现: 3306/tcp MySQL 5.7.38
-       → write_wiki_page("wiki/entities/ips/192.0.2.5.md")
-         "192.0.2.5: MySQL 5.7.38 on 3306/tcp"
+跨会话继承:
+  新会话启动 → 搜索 wiki/INDEX.md
+  → 读最近 3 天修改的条目
+  → 注入上下文: "Previous session discovered: {summary}"
+  → 继续工作, 不重复已完成的发现
 
-T+30s: Agent B (intel-gatherer) 启动, 搜索已有知识
-       → search_wiki("MySQL 5.7.38")
-       → 命中: entities/ips/192.0.2.5.md (Agent A 刚写入的)
-       → search_wiki("CVE MySQL 5.7.3")
-       → 命中: entities/cves/CVE-2021-XXXX.md
-       → write_wiki_page("wiki/entities/cves/CVE-2021-XXXX.md")
-         "CVE-2021-XXXX affects MySQL ≤5.7.39. Auth bypass. PoC available."
-
-T+60s: Agent C (exploit-runner) 准备执行
-       → read_wiki_page("wiki/entities/cves/CVE-2021-XXXX.md")
-       → 获取 PoC 路径, 目标 IP, 版本确认
-       → 执行 PoC → 成功 → root shell
-       → write_wiki_page("wiki/discoveries/pocs/F001-cve-2021-xxxx-poc.md")
-         "PoC executed successfully on 192.0.2.5:3306. Root access obtained."
-
-T+90s: 协调员读取所有 Wiki 条目
-       → 合成最终报告
-       → write_wiki_page("wiki/synthesis/reports/engagement-report.md")
-         "CRITICAL: MySQL 5.7.38 on 192.0.2.5 — CVE-2021-XXXX Auth Bypass → Root"
+策展 (每 10 次写入或会话结束):
+  1. 检查 90 天未访问的条目 → 标记 [STALE]
+  2. 合并重复条目 (同实体多条记录)
+  3. 更新 INDEX.md
+  4. 报告: "Wiki 策展完成: {n} stale, {m} merged, 总计 {total} 条目"
 ```
 
-## 安全约束
+## 跨 Agent 知识共享协议
+
+这是让多个 Agent 在同一个 Engagement 中协作的协议:
 
 ```
-1. 所有写入经过原子文件操作 (write_temp → fsync → rename)
-2. 路径穿越防护: path必须规范化且不能跳出 wiki/ 根目录
-3. 敏感信息脱敏: IP/域名/凭证自动替换为 [REDACTED]
-4. 无外传: Wiki 内容保留在本地 workspace
-5. 并发安全: 写操作通过文件锁保护
+## Agent A (侦察) 产出知识
+→ write "wiki/entities/ips/192.168.1.1.md"
+→ write "wiki/discoveries/scan-results/nmap-192.168.1.1.md"
+
+## Agent B (情报) 消费+生产
+→ grep_files("wiki/", "192.168.1.1")  # 读 Agent A 的侦察结果
+→ grep_files("wiki/", "CVE MySQL 5.7")  # 搜已有 CVE 知识
+→ write "wiki/entities/cves/CVE-2021-XXXX.md"  # 生产新 CVE 条目
+
+## Agent C (利用) 消费+生产
+→ read_file("wiki/entities/cves/CVE-2021-XXXX.md")  # 读 Agent B 的 CVE 条目
+→ write "wiki/discoveries/pocs/F001-poc.md"  # 生产 PoC 条目
+
+## 协调员 消费
+→ list_dir("wiki/")  # 查看全部产出
+→ 合成 → write "wiki/synthesis/reports/2026-05-25-engagement.md"
 ```
 
-## 关键文件 (源仓库)
+## 知识质量自检
 
-| 文件 | 行数 | 用途 |
-|------|------|------|
-| `crates/tui/src/llmwiki_server.rs` | 1117+ | Wiki HTTP 服务 + 工具实现 |
-| `crates/tui/src/memory/` | — | FTS5 记忆系统 |
-| `crates/tui/src/core/entity_graph.rs` | 200+ | 安全实体图 |
-| `crates/tui/src/tools/registry.rs` | — | Wiki 工具注册 |
-| `wiki/` | — | Wiki 内容目录 |
+每次写入后自问:
+- [ ] 文件名是否可搜索？(用 IP、CVE 编号、Finding ID，不要用描述性标题)
+- [ ] 模板是否完整？(所有必填字段都填了？)
+- [ ] 是否有交叉引用？(指向了相关条目？)
+- [ ] INDEX.md 是否更新了？
+
+## 初始化示例
+
+```
+场景: 第一次渗透测试
+
+1. 初始化 Wiki:
+   Wiki ready at /workspace/wiki.
+
+2. 侦察 Agent 发现 192.168.1.1:3306 MySQL 5.7.38:
+   → write "wiki/entities/ips/192.168.1.1.md" (使用 IP 条目模板)
+   → 追加 INDEX.md: "## Entities\n- [192.168.1.1](entities/ips/192.168.1.1.md): MySQL 5.7.38:3306"
+
+3. 情报 Agent 搜索 CVE:
+   → grep_files("wiki/", "MySQL 5.7.38") → 命中 192.168.1.1
+   → 搜索 CVE → 找到 CVE-2021-XXXX
+   → write "wiki/entities/cves/CVE-2021-XXXX.md" (使用 CVE 条目模板)
+   → 追加 INDEX.md
+
+4. 利用 Agent 验证:
+   → read_file("wiki/entities/cves/CVE-2021-XXXX.md") → 获取 PoC
+   → PoC 成功 → write "wiki/discoveries/pocs/F001-poc.md"
+   → write "wiki/discoveries/vuln-findings/F001.md"
+   → 更新 entities/ips/192.168.1.1.md 的 Findings 列表
+
+5. 协调员报告:
+   → 收集所有 F### → write "wiki/synthesis/reports/2026-05-25-engagement.md"
+   → 总结: "1 Critical finding, Wiki 共 8 条新条目"
+```
